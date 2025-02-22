@@ -57,27 +57,26 @@
     "prettier": "prettier --config .prettierrc.js \"**/*.{css,html,ts,js,java}\"",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api UploaderPlugin --output-readme README.md --output-json dist/docs.json",
-    "build": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build",
-    "prepare": "npm run clean && tsc && rollup -c rollup.config.mjs"
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "idb": "^8.0.2"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.1",
     "@capacitor/cli": "^7.0.1",
     "@capacitor/core": "^7.0.1",
-    "@capacitor/docgen": "^0.3.0",
     "@capacitor/ios": "^7.0.1",
-    "@ionic/eslint-config": "^0.4.0",
     "@ionic/prettier-config": "^4.0.0",
     "@ionic/swiftlint-config": "^2.0.0",
-    "@types/node": "^22.13.1",
+    "@typescript-eslint/eslint-plugin": "^8.24.1",
     "eslint": "^9.21.0",
-    "eslint-plugin-import": "^2.31.0",
-    "husky": "^9.1.7",
-    "prettier": "^3.5.2",
-    "prettier-plugin-java": "^2.6.7",
+    "prettier": "^3.5.1",
+    "prettier-plugin-java": "^2.6.6",
     "rimraf": "^6.0.1",
     "rollup": "^4.34.8",
     "swiftlint": "^2.0.0",
@@ -86,11 +85,27 @@
   "peerDependencies": {
     "@capacitor/core": ">=7.0.0"
   },
-  "eslintConfig": {
-    "extends": "@ionic/eslint-config/recommended"
-  },
   "prettier": "@ionic/prettier-config",
   "swiftlint": "@ionic/swiftlint-config",
+  "eslintConfig": {
+    "parserOptions": {
+      "ecmaVersion": 2021,
+      "sourceType": "module"
+    },
+    "plugins": [
+      "@typescript-eslint"
+    ],
+    "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended"
+    ],
+    "env": {
+      "browser": true
+    },
+    "rules": {
+      "no-empty": "off"
+    }
+  },
   "capacitor": {
     "ios": {
       "src": "ios"
@@ -98,8 +113,5 @@
     "android": {
       "src": "android"
     }
-  },
-  "dependencies": {
-    "idb": "^8.0.2"
   }
 }
