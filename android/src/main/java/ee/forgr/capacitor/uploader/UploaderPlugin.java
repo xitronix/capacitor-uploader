@@ -38,7 +38,7 @@ public class UploaderPlugin extends Plugin {
       NotificationChannel channel = new NotificationChannel(
         CHANNEL_ID,
         CHANNEL_NAME,
-        NotificationManager.IMPORTANCE_DEFAULT
+        NotificationManager.IMPORTANCE_LOW
       );
       channel.setDescription(CHANNEL_DESCRIPTION);
 
