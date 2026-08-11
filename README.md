@@ -1,9 +1,12 @@
 # @capgo/capacitor-uploader
- <a href="https://capgo.app/"><img src='https://raw.githubusercontent.com/Cap-go/capgo/main/assets/capgo_banner.png' alt='Capgo - Instant updates for capacitor'/></a>
+Upload files in the background with progress tracking, resumable uploads, and network-aware handling for Capacitor apps.
 
+
+<a href="https://capgo.app/"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-uploader" alt="Capgo - Instant updates for Capacitor" /></a>
+ 
 <div align="center">
-  <h2><a href="https://capgo.app/?ref=plugin"> ➡️ Get Instant updates for your App with Capgo 🚀</a></h2>
-  <h2><a href="https://capgo.app/consulting/?ref=plugin"> Fix your annoying bug now, Hire a Capacitor expert 💪</a></h2>
+  <h2><a href="https://capgo.app/?ref=plugin_uploader"> ➡️ Get Instant updates for your App with Capgo</a></h2>
+  <h2><a href="https://capgo.app/consulting/?ref=plugin_uploader"> Missing a feature? We’ll build the plugin for you 💪</a></h2>
 </div>
 
 ## Uploader Plugin
@@ -16,14 +19,43 @@ On the web, file paths support IndexedDB (IDB) semantic paths using the followin
 `idb://[database-name]/[collection-name]/[key]`  
 This allows seamless integration with IndexedDB for storing and retrieving files.
 
+## Documentation
+
+The most complete doc is available here: https://capgo.app/docs/plugins/uploader/
+
+## Compatibility
+
+| Plugin version | Capacitor compatibility | Maintained |
+| -------------- | ----------------------- | ---------- |
+| v8.\*.\*       | v8.\*.\*                | ✅          |
+| v7.\*.\*       | v7.\*.\*                | On demand   |
+| v6.\*.\*       | v6.\*.\*                | ❌          |
+| v5.\*.\*       | v5.\*.\*                | ❌          |
+
+> **Note:** The major version of this plugin follows the major version of Capacitor. Use the version that matches your Capacitor installation (e.g., plugin v8 for Capacitor 8). Only the latest major version is actively maintained.
+
 ## Install
+
+You can use our AI-Assisted Setup to install the plugin. Add the Capgo skills to your AI tool using the following command:
+
+```bash
+npx skills add https://github.com/cap-go/capacitor-skills --skill capacitor-plugins
+```
+
+Then use the following prompt:
+
+```text
+Use the `capacitor-plugins` skill from `cap-go/capacitor-skills` to install the `@capgo/capacitor-uploader` plugin in my project.
+```
+
+If you prefer Manual Setup, install the plugin by running the following commands and follow the platform-specific instructions below:
 
 ```bash
 npm install @capgo/capacitor-uploader
 npx cap sync
 ```
 
-## Android:
+## Android
 
 Add the following to your `AndroidManifest.xml` file:
 
@@ -33,7 +65,33 @@ Add the following to your `AndroidManifest.xml` file:
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 ```
 
-## Example S3 upload:
+
+
+## iOS
+
+On iOS the plugin uploads through a background `URLSession` using the identifier `CapacitorUploaderBackgroundSession`.
+
+Uploads often work without extra `Info.plist` keys. To allow the system to wake your app when background transfers finish, add the `fetch` background mode:
+
+```xml
+<key>UIBackgroundModes</key>
+<array>
+  <string>fetch</string>
+</array>
+```
+
+Do **not** add the `processing` background mode for this plugin alone. App Store Connect requires `BGTaskSchedulerPermittedIdentifiers` whenever `processing` is declared, and this plugin does not register `BGTaskScheduler` tasks. If your app already includes `processing` (for example from older documentation) and validation fails, add:
+
+```xml
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+  <string>CapacitorUploaderBackgroundSession</string>
+</array>
+```
+
+See [issue #115](https://github.com/Cap-go/capacitor-uploader/issues/115) for context.
+
+## Example S3 upload
 
 ```typescript
 import { Uploader } from '@capgo/capacitor-uploader';
@@ -68,7 +126,7 @@ async function uploadToS3(filePath: string, presignedUrl: string, fields: Record
 
 ```
 
-### Example upload to a custom server:
+### Example upload to a custom server
 
 ```typescript
 import { Uploader } from '@capgo/capacitor-uploader';
@@ -119,13 +177,31 @@ async function uploadToCustomServer(filePath: string, serverUrl: string) {
 
 // Usage
 const filePath = 'file:///path/to/your/file.jpg';
-
 const serverUrl = 'https://your-custom-server.com/upload';
 uploadToCustomServer(filePath, serverUrl);
 
 ```
 
-### Example with Capacitor Camera preview:
+### Example multi-file multipart upload
+
+```typescript
+import { Uploader } from '@capgo/capacitor-uploader';
+
+const { id } = await Uploader.startUpload({
+  serverUrl: 'https://api.example.com/upload',
+  method: 'POST',
+  uploadType: 'multipart',
+  files: [
+    { filePath: 'file:///...photo1.jpg', fieldName: 'images[]', mimeType: 'image/jpeg' },
+    { filePath: 'file:///...photo2.jpg', fieldName: 'images[]', mimeType: 'image/jpeg' },
+  ],
+  parameters: { albumId: '7' },
+  headers: { Authorization: 'Bearer token' },
+});
+console.log('Upload started with ID:', id);
+```
+
+### Example with Capacitor Camera preview
 
 Documentation for the [Capacitor Camera preview](https://github.com/Cap-go/camera-preview)
 
@@ -180,8 +256,11 @@ Documentation for the [Capacitor Camera preview](https://github.com/Cap-go/camer
 <docgen-index>
 
 * [`startUpload(...)`](#startupload)
+* [`uploadMultipart(...)`](#uploadmultipart)
 * [`removeUpload(...)`](#removeupload)
 * [`addListener('events', ...)`](#addlistenerevents-)
+* [`acknowledgeEvent(...)`](#acknowledgeevent)
+* [`getPluginVersion()`](#getpluginversion)
 * [Interfaces](#interfaces)
 
 </docgen-index>
@@ -189,19 +268,62 @@ Documentation for the [Capacitor Camera preview](https://github.com/Cap-go/camer
 <docgen-api>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
 
+Capacitor Uploader Plugin for uploading files with background support and progress tracking.
+
+### iOS setup
+
+On iOS the native layer uses a background `URLSession` with the identifier
+`CapacitorUploaderBackgroundSession`. Many apps can upload without adding
+`UIBackgroundModes`; add `fetch` when you need uploads to continue after the app
+is suspended.
+
+App Store Connect rejects builds that declare `UIBackgroundModes` → `processing`
+without `BGTaskSchedulerPermittedIdentifiers`. This plugin does not schedule
+`BGTaskScheduler` work, so avoid `processing` unless another feature needs it.
+If `processing` is present (for example from older setup guides), include
+`CapacitorUploaderBackgroundSession` in `BGTaskSchedulerPermittedIdentifiers`
+in your app's `Info.plist`.
+
 ### startUpload(...)
 
 ```typescript
 startUpload(options: uploadOption) => Promise<{ id: string; }>
 ```
 
-| Param         | Type                                                  | Description                              |
-| ------------- | ----------------------------------------------------- | ---------------------------------------- |
-| **`options`** | <code><a href="#uploadoption">uploadOption</a></code> | <a href="#uploadoption">uploadOption</a> |
+Start uploading a file to a server.
+
+The upload will continue in the background even if the app is closed or backgrounded.
+Listen to upload events to track progress, completion, or failure.
+
+| Param         | Type                                                  | Description                    |
+| ------------- | ----------------------------------------------------- | ------------------------------ |
+| **`options`** | <code><a href="#uploadoption">uploadOption</a></code> | - Configuration for the upload |
 
 **Returns:** <code>Promise&lt;{ id: string; }&gt;</code>
 
 **Since:** 0.0.1
+
+--------------------
+
+
+### uploadMultipart(...)
+
+```typescript
+uploadMultipart(options: UploadMultipartOptions) => Promise<{ id: string; }>
+```
+
+Start uploading a single file as multipart/form-data.
+
+This is a convenience API for backends that expect a named file field and
+additional form fields. Existing `startUpload` binary uploads are unchanged.
+
+| Param         | Type                                                                      | Description                              |
+| ------------- | ------------------------------------------------------------------------- | ---------------------------------------- |
+| **`options`** | <code><a href="#uploadmultipartoptions">UploadMultipartOptions</a></code> | - Configuration for the multipart upload |
+
+**Returns:** <code>Promise&lt;{ id: string; }&gt;</code>
+
+**Since:** 8.3.2
 
 --------------------
 
@@ -212,9 +334,13 @@ startUpload(options: uploadOption) => Promise<{ id: string; }>
 removeUpload(options: { id: string; }) => Promise<void>
 ```
 
-| Param         | Type                         |
-| ------------- | ---------------------------- |
-| **`options`** | <code>{ id: string; }</code> |
+Cancel and remove an ongoing upload.
+
+This will stop the upload if it's in progress and clean up resources.
+
+| Param         | Type                         | Description                                 |
+| ------------- | ---------------------------- | ------------------------------------------- |
+| **`options`** | <code>{ id: string; }</code> | - Object containing the upload ID to remove |
 
 **Since:** 0.0.1
 
@@ -224,15 +350,61 @@ removeUpload(options: { id: string; }) => Promise<void>
 ### addListener('events', ...)
 
 ```typescript
-addListener(eventName: "events", listenerFunc: (state: UploadEvent) => void) => Promise<PluginListenerHandle>
+addListener(eventName: 'events', listenerFunc: (state: UploadEvent) => void) => Promise<PluginListenerHandle>
 ```
 
-| Param              | Type                                                                    |
-| ------------------ | ----------------------------------------------------------------------- |
-| **`eventName`**    | <code>'events'</code>                                                   |
-| **`listenerFunc`** | <code>(state: <a href="#uploadevent">UploadEvent</a>) =&gt; void</code> |
+Listen for upload progress and status events.
+
+Events are fired for:
+- Upload progress updates (with percent)
+- Upload completion (with statusCode)
+- Upload failure (with error and statusCode)
+
+| Param              | Type                                                                    | Description                                 |
+| ------------------ | ----------------------------------------------------------------------- | ------------------------------------------- |
+| **`eventName`**    | <code>'events'</code>                                                   | - Must be 'events'                          |
+| **`listenerFunc`** | <code>(state: <a href="#uploadevent">UploadEvent</a>) =&gt; void</code> | - Callback function to handle upload events |
 
 **Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 0.0.1
+
+--------------------
+
+
+### acknowledgeEvent(...)
+
+```typescript
+acknowledgeEvent(options: { eventId: string; }) => Promise<void>
+```
+
+Acknowledge receipt of an upload event and remove it from the plugin cache.
+
+Completed and failed events are stored in the plugin's persistent cache so they can be
+re-delivered if the app is closed or backgrounded before the event is processed.
+Call this method after successfully handling a 'completed' or 'failed' event to prevent
+it from being re-broadcast the next time the plugin initialises.
+
+Progress ('uploading') events do not have an eventId and do not need to be acknowledged.
+
+| Param         | Type                              | Description                                    |
+| ------------- | --------------------------------- | ---------------------------------------------- |
+| **`options`** | <code>{ eventId: string; }</code> | - Object containing the eventId to acknowledge |
+
+**Since:** 0.0.2
+
+--------------------
+
+
+### getPluginVersion()
+
+```typescript
+getPluginVersion() => Promise<{ version: string; }>
+```
+
+Get the native Capacitor plugin version.
+
+**Returns:** <code>Promise&lt;{ version: string; }&gt;</code>
 
 **Since:** 0.0.1
 
@@ -244,18 +416,43 @@ addListener(eventName: "events", listenerFunc: (state: UploadEvent) => void) => 
 
 #### uploadOption
 
-| Prop                    | Type                                    | Default                  | Since |
-| ----------------------- | --------------------------------------- | ------------------------ | ----- |
-| **`filePath`**          | <code>string</code>                     |                          | 0.0.1 |
-| **`serverUrl`**         | <code>string</code>                     |                          | 0.0.1 |
-| **`notificationTitle`** | <code>number</code>                     | <code>'Uploading'</code> | 0.0.1 |
-| **`headers`**           | <code>{ [key: string]: string; }</code> |                          | 0.0.1 |
-| **`method`**            | <code>'PUT' \| 'POST'</code>            | <code>'POST'</code>      | 0.0.1 |
-| **`mimeType`**          | <code>string</code>                     |                          | 0.0.1 |
-| **`parameters`**        | <code>{ [key: string]: string; }</code> |                          | 0.0.1 |
-| **`maxRetries`**        | <code>number</code>                     |                          | 0.0.1 |
-| **`uploadType`**        | <code>'binary' \| 'multipart'</code>    | <code>'binary'</code>    | 0.0.2 |
-| **`fileField`**         | <code>string</code>                     | <code>'file'</code>      | 0.0.2 |
+| Prop                    | Type                                    | Description                                                                                                                                                                                                                                                          | Default                                                                 | Since |
+| ----------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----- |
+| **`filePath`**          | <code>string</code>                     | The local file path of the file to upload. Can be a file:// URL or an absolute path. If you need to upload multiple files in a single multipart request, use `files`.                                                                                                |                                                                         | 0.0.1 |
+| **`files`**             | <code>UploadFileOption[]</code>         | Multiple files to upload in a single request. When provided, uploads are sent as `multipart/form-data` with one part per file. Use `fieldName` to control each part name (e.g. `images[]`). Note: `PUT` uploads (e.g. presigned S3 URLs) only support a single file. |                                                                         | 0.0.3 |
+| **`serverUrl`**         | <code>string</code>                     | The server URL endpoint where the file should be uploaded.                                                                                                                                                                                                           |                                                                         | 0.0.1 |
+| **`notificationTitle`** | <code>string</code>                     | The title of the upload notification shown to the user. Android only.                                                                                                                                                                                                | <code>'Uploading'</code>                                                | 0.0.1 |
+| **`headers`**           | <code>{ [key: string]: string; }</code> | HTTP headers to send with the upload request. Useful for authentication tokens, content types, etc.                                                                                                                                                                  |                                                                         | 0.0.1 |
+| **`method`**            | <code>'PUT' \| 'POST'</code>            | The HTTP method to use for the upload request.                                                                                                                                                                                                                       | <code>'POST'</code>                                                     | 0.0.1 |
+| **`mimeType`**          | <code>string</code>                     | The MIME type of the file being uploaded. If not specified, the plugin will attempt to determine it automatically.                                                                                                                                                   |                                                                         | 0.0.1 |
+| **`parameters`**        | <code>{ [key: string]: string; }</code> | Additional form parameters to send with the upload request. These will be included as form data in multipart uploads.                                                                                                                                                |                                                                         | 0.0.1 |
+| **`maxRetries`**        | <code>number</code>                     | The maximum number of times to retry the upload if it fails.                                                                                                                                                                                                         | <code>0</code>                                                          | 0.0.1 |
+| **`uploadType`**        | <code>'binary' \| 'multipart'</code>    | The type of upload to perform. - 'binary': Uploads the file as raw binary data in the request body - 'multipart': Uploads the file as multipart/form-data                                                                                                            | <code>'binary' when `method` is `'PUT'`, otherwise `'multipart'`</code> | 0.0.2 |
+| **`fileField`**         | <code>string</code>                     | The form field name for the file when using multipart upload type. Only used when uploadType is 'multipart'. For multi-file uploads via `files`, this is used as the default field name when a file entry does not specify `fieldName`.                              | <code>'file'</code>                                                     | 0.0.2 |
+
+
+#### UploadFileOption
+
+Configuration options for uploading a file.
+
+| Prop            | Type                | Description                                                                                                                                                         | Since |
+| --------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| **`filePath`**  | <code>string</code> | The local file path of the file to upload. Can be a file:// URL or an absolute path.                                                                                | 0.0.3 |
+| **`fieldName`** | <code>string</code> | The form field name for the file part when using multipart upload. If omitted, <a href="#uploadoption">`uploadOption.fileField`</a> is used (defaults to `'file'`). | 0.0.3 |
+| **`mimeType`**  | <code>string</code> | The MIME type of this file. If not specified, the plugin will attempt to determine it automatically.                                                                | 0.0.3 |
+
+
+#### UploadMultipartOptions
+
+Options for starting a single-file multipart upload.
+
+| Prop            | Type                                    | Description                                                                          | Since |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------------------------ | ----- |
+| **`url`**       | <code>string</code>                     | The server URL endpoint where the multipart request should be sent.                  | 8.3.2 |
+| **`filePath`**  | <code>string</code>                     | The local file path of the file to upload. Can be a file:// URL or an absolute path. | 8.3.2 |
+| **`fieldName`** | <code>string</code>                     | The form field name for the uploaded file part.                                      | 8.3.2 |
+| **`fields`**    | <code>{ [key: string]: string; }</code> | Additional form fields to include in the multipart request.                          | 8.3.2 |
+| **`headers`**   | <code>{ [key: string]: string; }</code> | HTTP headers to send with the upload request.                                        | 8.3.2 |
 
 
 #### PluginListenerHandle
@@ -267,11 +464,14 @@ addListener(eventName: "events", listenerFunc: (state: UploadEvent) => void) => 
 
 #### UploadEvent
 
-| Prop          | Type                                                                    | Description                                  | Default                                               | Since |
-| ------------- | ----------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------- | ----- |
-| **`name`**    | <code>'uploading' \| 'completed' \| 'failed'</code>                     | Current status of upload, between 0 and 100. |                                                       | 0.0.1 |
-| **`payload`** | <code>{ percent?: number; error?: string; statusCode?: number; }</code> |                                              | <code>{ percent: 0, error: '', statusCode: 0 }</code> | 0.0.1 |
-| **`id`**      | <code>string</code>                                                     |                                              |                                                       | 0.0.1 |
+Event emitted during the upload lifecycle.
+
+| Prop          | Type                                                                    | Description                                                                                                                                                                                                                                                                  | Since |
+| ------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| **`name`**    | <code>'uploading' \| 'completed' \| 'failed'</code>                     | The current status of the upload. - 'uploading': Upload is in progress - 'completed': Upload finished successfully - 'failed': Upload encountered an error                                                                                                                   | 0.0.1 |
+| **`payload`** | <code>{ percent?: number; error?: string; statusCode?: number; }</code> | Additional data about the upload event.                                                                                                                                                                                                                                      | 0.0.1 |
+| **`id`**      | <code>string</code>                                                     | Unique identifier for this upload task.                                                                                                                                                                                                                                      | 0.0.1 |
+| **`eventId`** | <code>string</code>                                                     | Unique identifier for this specific event instance. Only present on 'completed' and 'failed' events. Used with acknowledgeEvent() to confirm receipt and remove the event from the plugin cache. Progress ('uploading') events do not have an eventId and are not persisted. | 0.0.2 |
 
 </docgen-api>
 
@@ -279,4 +479,3 @@ addListener(eventName: "events", listenerFunc: (state: UploadEvent) => void) => 
 
 For the inspiration and the code on ios: https://github.com/Vydia/react-native-background-upload/tree/master
 For the API definition: https://www.npmjs.com/package/cordova-plugin-background-upload-put-s3
-
