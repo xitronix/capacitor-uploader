@@ -1,5 +1,6 @@
 package ee.forgr.capacitor.uploader;
 
+import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
@@ -14,7 +15,6 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import android.app.Application;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -158,73 +158,72 @@ public class UploaderPlugin extends Plugin {
             }
             // Keep observer for process lifetime. Weak plugin ref avoids retaining Bridge/WebView
             // after Activity destroy; register once to avoid duplicate receivers.
-            processObserver =
-                new GlobalRequestObserver(
-                    application,
-                    new RequestObserverDelegate() {
-                        @Override
-                        public void onProgress(Context context, UploadInfo uploadInfo) {
-                            JSObject event = new JSObject();
-                            event.put("name", "uploading");
-                            JSObject payload = new JSObject();
-                            payload.put("percent", uploadInfo.getProgressPercent());
-                            event.put("payload", payload);
-                            event.put("id", uploadInfo.getUploadId());
-                            emitEvent("events", event, false);
-                        }
+            processObserver = new GlobalRequestObserver(
+                application,
+                new RequestObserverDelegate() {
+                    @Override
+                    public void onProgress(Context context, UploadInfo uploadInfo) {
+                        JSObject event = new JSObject();
+                        event.put("name", "uploading");
+                        JSObject payload = new JSObject();
+                        payload.put("percent", uploadInfo.getProgressPercent());
+                        event.put("payload", payload);
+                        event.put("id", uploadInfo.getUploadId());
+                        emitEvent("events", event, false);
+                    }
 
-                        @Override
-                        public void onSuccess(Context context, UploadInfo uploadInfo, ServerResponse serverResponse) {
-                            clearTempBody(uploadInfo.getUploadId());
-                            JSObject event = new JSObject();
-                            event.put("name", "completed");
-                            JSObject payload = new JSObject();
-                            payload.put("statusCode", serverResponse.getCode());
-                            event.put("payload", payload);
-                            event.put("id", uploadInfo.getUploadId());
-                            String eventId = UUID.randomUUID().toString();
-                            event.put("eventId", eventId);
-                            saveEventToPrefs(context, eventId, event);
-                            emitEvent("events", event, true);
-                        }
+                    @Override
+                    public void onSuccess(Context context, UploadInfo uploadInfo, ServerResponse serverResponse) {
+                        clearTempBody(uploadInfo.getUploadId());
+                        JSObject event = new JSObject();
+                        event.put("name", "completed");
+                        JSObject payload = new JSObject();
+                        payload.put("statusCode", serverResponse.getCode());
+                        event.put("payload", payload);
+                        event.put("id", uploadInfo.getUploadId());
+                        String eventId = UUID.randomUUID().toString();
+                        event.put("eventId", eventId);
+                        saveEventToPrefs(context, eventId, event);
+                        emitEvent("events", event, true);
+                    }
 
-                        @Override
-                        public void onError(Context context, UploadInfo uploadInfo, Throwable exception) {
-                            clearTempBody(uploadInfo.getUploadId());
-                            JSObject event = new JSObject();
-                            event.put("name", "failed");
-                            JSObject payload = new JSObject();
-                            payload.put("error", exception.getMessage());
-                            event.put("payload", payload);
-                            event.put("id", uploadInfo.getUploadId());
-                            String eventId = UUID.randomUUID().toString();
-                            event.put("eventId", eventId);
-                            saveEventToPrefs(context, eventId, event);
-                            emitEvent("events", event, true);
-                        }
+                    @Override
+                    public void onError(Context context, UploadInfo uploadInfo, Throwable exception) {
+                        clearTempBody(uploadInfo.getUploadId());
+                        JSObject event = new JSObject();
+                        event.put("name", "failed");
+                        JSObject payload = new JSObject();
+                        payload.put("error", exception.getMessage());
+                        event.put("payload", payload);
+                        event.put("id", uploadInfo.getUploadId());
+                        String eventId = UUID.randomUUID().toString();
+                        event.put("eventId", eventId);
+                        saveEventToPrefs(context, eventId, event);
+                        emitEvent("events", event, true);
+                    }
 
-                        @Override
-                        public void onCompleted(Context context, UploadInfo uploadInfo) {
-                            releaseUpload(uploadInfo.getUploadId());
-                            JSObject event = new JSObject();
-                            event.put("name", "finished");
-                            event.put("id", uploadInfo.getUploadId());
-                            emitEvent("events", event, false);
-                        }
+                    @Override
+                    public void onCompleted(Context context, UploadInfo uploadInfo) {
+                        releaseUpload(uploadInfo.getUploadId());
+                        JSObject event = new JSObject();
+                        event.put("name", "finished");
+                        event.put("id", uploadInfo.getUploadId());
+                        emitEvent("events", event, false);
+                    }
 
-                        @Override
-                        public void onCompletedWhileNotObserving() {
-                            if (!pluginAttached) {
-                                return;
-                            }
-                            UploaderPlugin plugin = currentPlugin();
-                            if (plugin != null && plugin.getBridge() != null) {
-                                plugin.replayPendingEvents();
-                            }
+                    @Override
+                    public void onCompletedWhileNotObserving() {
+                        if (!pluginAttached) {
+                            return;
                         }
-                    },
-                    (Function1<UploadInfo, Boolean>) uploadInfo -> OWNED_UPLOAD_IDS.contains(uploadInfo.getUploadId())
-                );
+                        UploaderPlugin plugin = currentPlugin();
+                        if (plugin != null && plugin.getBridge() != null) {
+                            plugin.replayPendingEvents();
+                        }
+                    }
+                },
+                (Function1<UploadInfo, Boolean>) (uploadInfo) -> OWNED_UPLOAD_IDS.contains(uploadInfo.getUploadId())
+            );
         }
     }
 
