@@ -57,6 +57,8 @@ public class UploaderPlugin extends Plugin {
     private static GlobalRequestObserver processObserver;
     private static Uploader processUploader;
     private static WeakReference<UploaderPlugin> activePlugin = new WeakReference<>(null);
+    // Cleared in handleOnDestroy so emitEvent no-ops while Activity/Bridge is tearing down.
+    private static volatile boolean pluginAttached = false;
 
     private static void saveEventToPrefs(Context context, String eventId, JSObject event) {
         synchronized (PENDING_EVENTS_LOCK) {
@@ -121,8 +123,11 @@ public class UploaderPlugin extends Plugin {
     }
 
     private static void emitEvent(String name, JSObject event, boolean retainUntilConsumed) {
+        if (!pluginAttached) {
+            return;
+        }
         UploaderPlugin plugin = currentPlugin();
-        if (plugin == null) {
+        if (plugin == null || plugin.getBridge() == null) {
             return;
         }
         if (retainUntilConsumed) {
@@ -209,8 +214,11 @@ public class UploaderPlugin extends Plugin {
 
                         @Override
                         public void onCompletedWhileNotObserving() {
+                            if (!pluginAttached) {
+                                return;
+                            }
                             UploaderPlugin plugin = currentPlugin();
-                            if (plugin != null) {
+                            if (plugin != null && plugin.getBridge() != null) {
                                 plugin.replayPendingEvents();
                             }
                         }
@@ -224,9 +232,20 @@ public class UploaderPlugin extends Plugin {
     public void load() {
         createNotificationChannel();
         activePlugin = new WeakReference<>(this);
+        pluginAttached = true;
         ensureProcessObserver(getActivity().getApplication());
         implementation = processUploader;
         replayPendingEvents();
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        // Detach the plugin sink only — keep processObserver registered for background uploads.
+        if (activePlugin.get() == this) {
+            pluginAttached = false;
+            activePlugin.clear();
+        }
+        super.handleOnDestroy();
     }
 
     public static String getMimeType(String url) {
