@@ -103,9 +103,10 @@ public class UploaderPlugin extends Plugin {
         createNotificationChannel();
         implementation = new Uploader(getContext().getApplicationContext());
 
-        // Registered against the Application, not the Activity lifecycle: an
-        // activity-bound observer unregisters on pause, which is exactly when
-        // background uploads finish and their events need persisting.
+        // Registered against the Application for process lifetime — do not
+        // unregister in handleOnDestroy. Activity destroy (config change /
+        // background teardown) can happen while UploadService is still running;
+        // an activity-bound observer would miss those terminal events.
         uploadObserver = new GlobalRequestObserver(
             getActivity().getApplication(),
             new RequestObserverDelegate() {
@@ -167,15 +168,6 @@ public class UploaderPlugin extends Plugin {
         );
 
         replayPendingEvents();
-    }
-
-    @Override
-    protected void handleOnDestroy() {
-        if (uploadObserver != null) {
-            uploadObserver.unregister();
-            uploadObserver = null;
-        }
-        super.handleOnDestroy();
     }
 
     public static String getMimeType(String url) {
