@@ -165,43 +165,39 @@ public class UploaderPlugin extends Plugin {
             return;
         }
         processUploader = new Uploader(application);
-        processObserver = new GlobalRequestObserver(
-            application,
-            new RequestObserverDelegate() {
-                @Override
-                public void onProgress(Context context, UploadInfo uploadInfo) {
-                    JSObject payload = new JSObject();
-                    payload.put("percent", uploadInfo.getProgressPercent());
-                    emitEvent("events", createEvent("uploading", uploadInfo.getUploadId(), payload), false);
-                }
+        processObserver = new GlobalRequestObserver(application, new RequestObserverDelegate() {
+            @Override
+            public void onProgress(Context context, UploadInfo uploadInfo) {
+                JSObject payload = new JSObject();
+                payload.put("percent", uploadInfo.getProgressPercent());
+                emitEvent("events", createEvent("uploading", uploadInfo.getUploadId(), payload), false);
+            }
 
-                @Override
-                public void onSuccess(Context context, UploadInfo uploadInfo, ServerResponse serverResponse) {
-                    JSObject payload = new JSObject();
-                    payload.put("statusCode", serverResponse.getCode());
-                    emitTerminalEvent(context, "completed", uploadInfo, payload);
-                }
+            @Override
+            public void onSuccess(Context context, UploadInfo uploadInfo, ServerResponse serverResponse) {
+                JSObject payload = new JSObject();
+                payload.put("statusCode", serverResponse.getCode());
+                emitTerminalEvent(context, "completed", uploadInfo, payload);
+            }
 
-                @Override
-                public void onError(Context context, UploadInfo uploadInfo, Throwable exception) {
-                    JSObject payload = new JSObject();
-                    payload.put("error", exception.getMessage());
-                    emitTerminalEvent(context, "failed", uploadInfo, payload);
-                }
+            @Override
+            public void onError(Context context, UploadInfo uploadInfo, Throwable exception) {
+                JSObject payload = new JSObject();
+                payload.put("error", exception.getMessage());
+                emitTerminalEvent(context, "failed", uploadInfo, payload);
+            }
 
-                @Override
-                public void onCompleted(Context context, UploadInfo uploadInfo) {
-                    clearTempBody(uploadInfo.getUploadId());
-                    emitEvent("events", createEvent("finished", uploadInfo.getUploadId(), null), false);
-                }
+            @Override
+            public void onCompleted(Context context, UploadInfo uploadInfo) {
+                clearTempBody(uploadInfo.getUploadId());
+                emitEvent("events", createEvent("finished", uploadInfo.getUploadId(), null), false);
+            }
 
-                @Override
-                public void onCompletedWhileNotObserving() {
-                    // A GlobalRequestObserver remains registered for the process lifetime.
-                }
-            },
-            (uploadInfo) -> uploadInfo.getUploadId().startsWith(UPLOAD_ID_PREFIX)
-        );
+            @Override
+            public void onCompletedWhileNotObserving() {
+                // A GlobalRequestObserver remains registered for the process lifetime.
+            }
+        }, (uploadInfo) -> uploadInfo.getUploadId().startsWith(UPLOAD_ID_PREFIX));
     }
 
     @Override
