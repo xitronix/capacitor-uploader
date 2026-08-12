@@ -132,7 +132,7 @@ public class UploaderPlugin extends Plugin {
                     String eventId = UUID.randomUUID().toString();
                     event.put("eventId", eventId);
                     saveEventToPrefs(eventId, event);
-                    notifyListeners("events", event);
+                    notifyListeners("events", event, true);
                 }
 
                 @Override
@@ -147,7 +147,7 @@ public class UploaderPlugin extends Plugin {
                     String eventId = UUID.randomUUID().toString();
                     event.put("eventId", eventId);
                     saveEventToPrefs(eventId, event);
-                    notifyListeners("events", event);
+                    notifyListeners("events", event, true);
                 }
 
                 @Override
