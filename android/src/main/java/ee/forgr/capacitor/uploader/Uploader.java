@@ -67,6 +67,7 @@ public class Uploader {
     }
 
     public String startUpload(
+        String uploadId,
         List<UploadFile> files,
         String serverUrl,
         Map<String, String> headers,
@@ -82,7 +83,7 @@ public class Uploader {
             if (files == null || files.isEmpty()) {
                 throw new IllegalArgumentException("Missing required parameter: files");
             }
-            return startMultipartUpload(files, serverUrl, headers, parameters, httpMethod, notificationConfig, maxRetries);
+            return startMultipartUpload(uploadId, files, serverUrl, headers, parameters, httpMethod, notificationConfig, maxRetries);
         } else {
             if (files == null || files.isEmpty()) {
                 throw new IllegalArgumentException("Missing required parameter: filePath or files");
@@ -92,6 +93,7 @@ public class Uploader {
             }
             UploadFile file = files.get(0);
             return startBinaryUpload(
+                uploadId,
                 file.filePath,
                 serverUrl,
                 headers,
@@ -105,6 +107,7 @@ public class Uploader {
     }
 
     private String startMultipartUpload(
+        String uploadId,
         List<UploadFile> files,
         String serverUrl,
         Map<String, String> headers,
@@ -115,12 +118,14 @@ public class Uploader {
     ) throws Exception {
         String boundary = UUID.randomUUID().toString();
         File tempBody = writeMultipartBodyToFile(files, parameters, boundary);
+        tempMultipartBodies.put(uploadId, tempBody);
 
         try {
             BinaryUploadRequest request = new BinaryUploadRequest(context, serverUrl)
+                .setUploadID(uploadId)
                 .setMethod(httpMethod)
                 .setFileToUpload(tempBody.getAbsolutePath())
-                .setNotificationConfig((ctx, uploadId) -> notificationConfig)
+                .setNotificationConfig((ctx, requestUploadId) -> notificationConfig)
                 .setMaxRetries(maxRetries)
                 .setUsesFixedLengthStreamingMode(true);
 
@@ -132,10 +137,9 @@ public class Uploader {
                 }
             }
 
-            String uploadId = request.startUpload();
-            tempMultipartBodies.put(uploadId, tempBody);
-            return uploadId;
+            return request.startUpload();
         } catch (Exception e) {
+            tempMultipartBodies.remove(uploadId);
             if (!tempBody.delete()) {
                 tempBody.deleteOnExit();
             }
@@ -230,6 +234,7 @@ public class Uploader {
     }
 
     private String startBinaryUpload(
+        String uploadId,
         String filePath,
         String serverUrl,
         Map<String, String> headers,
@@ -240,9 +245,10 @@ public class Uploader {
         String mimeType
     ) throws Exception {
         BinaryUploadRequest request = new BinaryUploadRequest(context, serverUrl)
+            .setUploadID(uploadId)
             .setMethod(httpMethod)
             .setFileToUpload(filePath)
-            .setNotificationConfig((ctx, uploadId) -> notificationConfig)
+            .setNotificationConfig((ctx, requestUploadId) -> notificationConfig)
             .setMaxRetries(maxRetries);
 
         if (mimeType != null && !mimeType.isEmpty()) {
