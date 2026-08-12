@@ -1,4 +1,8 @@
-name: Build source code and check lint
+name: Build and publish
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   push:
@@ -6,77 +10,64 @@ on:
       - "*"
 
 jobs:
-  build_android:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - name: Install dependencies
-        id: install_code
-        run: bun i
-      - name: Setup java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '21'
-          cache: 'gradle'
-          cache-dependency-path: | # optional
-            android/.gradle/*.gradle*
-            android/**/gradle-wrapper.properties
-      - name: Build
-        id: build_code
-        run: npm run verify:android
-  build_ios:
-    runs-on: macOS-latest
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/cache@v4
-        id: cocoapods-cache
-        with:
-          path: ios/Pods
-          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pods-
-      - name: Install dependencies
-        id: install_code
-        run: bun i
-      - name: Build
-        id: build_code
-        run: bun run verify:ios
+  # Tests already passed before tag was created, so just build and deploy
   deploy:
-    needs: [build_android, build_ios]
     runs-on: ubuntu-latest
-    name: "Build code and npm release"
+    # Keep this job capped at 10 minutes; never raise it unless explicitly asked.
+    timeout-minutes: 10
+    name: "Build and publish to npm"
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         id: install_code
         run: bun i
-      - name: Lint
-        id: lint_code
-        run: bun run lint
+      - name: Check plugin wiring
+        run: bun run check:wiring
       - name: Build
         id: build_code
         run: bun run build
-      - name: Verify
-        id: verify_code
-        run: bun run verify:web
-      - uses: JS-DevTools/npm-publish@v3
+      - name: Generate AI changelog
+        id: changelog
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun run changelog:ai
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish to npm
         if: ${{ !contains(github.ref, '-alpha.') }}
-        with:
-          token: ${{ secrets.NPM_TOKEN }}
-          provenance: true
-      - uses: JS-DevTools/npm-publish@v3
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+      - name: Publish to npm with next tag
         if: ${{ contains(github.ref, '-alpha.') }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --tag next --provenance --access public
+      - name: Create GitHub release
+        id: create_release
+        uses: softprops/action-gh-release@v3
         with:
-          token: ${{ secrets.NPM_TOKEN }}
-          tag: next
-          provenance: true
+          body: |
+            ## 🆕 Changelog
+            
+            ${{ steps.changelog.outputs.result || '_Changelog was not generated automatically for this release._' }}
+            
+            ---
+
+            🔗 **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.from_tag || github.ref_name }}...${{ steps.changelog.outputs.to_tag || github.ref_name }}
+          make_latest: true
+          token: '${{ secrets.PERSONAL_ACCESS_TOKEN }}'
+          prerelease: ${{ contains(github.ref, '-alpha.') }}

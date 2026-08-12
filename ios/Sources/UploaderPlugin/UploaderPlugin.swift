@@ -3,11 +3,15 @@ import Capacitor
 
 @objc(UploaderPlugin)
 public class UploaderPlugin: CAPPlugin, CAPBridgedPlugin {
+    private let pluginVersion: String = "8.3.7"
     public let identifier = "UploaderPlugin"
     public let jsName = "Uploader"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "startUpload", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeUpload", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "uploadMultipart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "removeUpload", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPluginVersion", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "acknowledgeEvent", returnType: CAPPluginReturnPromise)
     ]
     private let implementation = Uploader()
 
@@ -18,18 +22,41 @@ public class UploaderPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func startUpload(_ call: CAPPluginCall) {
-        guard let filePath = call.getString("filePath"),
-              let serverUrl = call.getString("serverUrl") else {
-            call.reject("Missing required parameters")
+        let filePath = call.getString("filePath")
+        let files = call.getArray("files")
+        guard let serverUrl = call.getString("serverUrl") else {
+            call.reject("Missing required parameter: serverUrl")
+            return
+        }
+        if (filePath == nil || filePath?.isEmpty == true) && (files == nil || files?.isEmpty == true) {
+            call.reject("Missing required parameter: filePath or files")
             return
         }
 
-        let options: [String: Any] = [
-            "headers": call.getObject("headers") as Any,
-            "method": call.getString("method") as Any,
-            "mimeType": call.getString("mimeType") as Any,
-            "parameters": call.getObject("parameters") as Any
+        let headers = (call.getObject("headers") ?? [:]).compactMapValues { $0 as? String }
+        let parameters = (call.getObject("parameters") ?? [:]).compactMapValues { $0 as? String }
+
+        var options: [String: Any] = [
+            "headers": headers,
+            "parameters": parameters
         ]
+
+        if let method = call.getString("method") { options["method"] = method }
+        if let mimeType = call.getString("mimeType") { options["mimeType"] = mimeType }
+        if let uploadType = call.getString("uploadType") { options["uploadType"] = uploadType }
+        if let fileField = call.getString("fileField") { options["fileField"] = fileField }
+
+        if let files {
+            let normalizedFiles: [[String: String]] = files.compactMap { item in
+                guard let obj = item as? JSObject else { return nil }
+                var out: [String: String] = [:]
+                if let filePath = obj["filePath"] as? String { out["filePath"] = filePath }
+                if let fieldName = obj["fieldName"] as? String { out["fieldName"] = fieldName }
+                if let mimeType = obj["mimeType"] as? String { out["mimeType"] = mimeType }
+                return out.isEmpty ? nil : out
+            }
+            if !normalizedFiles.isEmpty { options["files"] = normalizedFiles }
+        }
 
         let maxRetries = call.getInt("maxRetries") ?? 3
 
@@ -41,6 +68,48 @@ public class UploaderPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Failed to start upload: \(error.localizedDescription)")
             }
         }
+    }
+
+    @objc func uploadMultipart(_ call: CAPPluginCall) {
+        guard let serverUrl = call.getString("url"), !serverUrl.isEmpty else {
+            call.reject("Missing required parameter: url")
+            return
+        }
+        guard let filePath = call.getString("filePath"), !filePath.isEmpty else {
+            call.reject("Missing required parameter: filePath")
+            return
+        }
+        guard let fieldName = call.getString("fieldName"), !fieldName.isEmpty else {
+            call.reject("Missing required parameter: fieldName")
+            return
+        }
+
+        let headers = (call.getObject("headers") ?? [:]).compactMapValues { $0 as? String }
+        let fields = (call.getObject("fields") ?? [:]).compactMapValues { $0 as? String }
+        let options: [String: Any] = [
+            "headers": headers,
+            "parameters": fields,
+            "method": "POST",
+            "uploadType": "multipart",
+            "fileField": fieldName
+        ]
+
+        Task {
+            do {
+                let id = try await implementation.startUpload(filePath, serverUrl, options, maxRetries: 3)
+                call.resolve(["id": id])
+            } catch {
+                call.reject("Failed to start multipart upload: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    @objc func acknowledgeEvent(_ call: CAPPluginCall) {
+        guard let eventId = call.getString("eventId"), !eventId.isEmpty else {
+            call.reject("Missing required parameter: eventId")
+            return
+        }
+        call.resolve()
     }
 
     @objc func removeUpload(_ call: CAPPluginCall) {
@@ -58,4 +127,9 @@ public class UploaderPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
     }
+
+    @objc func getPluginVersion(_ call: CAPPluginCall) {
+        call.resolve(["version": self.pluginVersion])
+    }
+
 }

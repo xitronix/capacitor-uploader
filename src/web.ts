@@ -1,18 +1,14 @@
-import { WebPlugin } from "@capacitor/core";
+import { WebPlugin } from '@capacitor/core';
 import { openDB } from 'idb';
 
-import { PathHelper } from "./PathHelper";
-
-import type { UploaderPlugin, uploadOption } from "./definitions";
+import { PathHelper } from './PathHelper';
+import type { UploadFileOption, UploadMultipartOptions, UploaderPlugin, uploadOption } from './definitions';
 
 export class UploaderWeb extends WebPlugin implements UploaderPlugin {
-  private uploads: Map<
-    string,
-    { controller: AbortController; retries: number }
-  > = new Map();
+  private uploads: Map<string, { controller: AbortController; retries: number }> = new Map();
 
   async startUpload(options: uploadOption): Promise<{ id: string }> {
-    console.log("startUpload", options);
+    console.log('startUpload', options);
 
     const id = Math.random().toString(36).substring(2, 15);
     const controller = new AbortController();
@@ -24,14 +20,26 @@ export class UploaderWeb extends WebPlugin implements UploaderPlugin {
     return { id };
   }
 
+  async uploadMultipart(options: UploadMultipartOptions): Promise<{ id: string }> {
+    return this.startUpload({
+      filePath: options.filePath,
+      serverUrl: options.url,
+      headers: options.headers ?? {},
+      method: 'POST',
+      uploadType: 'multipart',
+      fileField: options.fieldName,
+      parameters: options.fields ?? {},
+    });
+  }
+
   async removeUpload(options: { id: string }): Promise<void> {
-    console.log("removeUpload", options);
+    console.log('removeUpload', options);
     const upload = this.uploads.get(options.id);
     if (upload) {
       upload.controller.abort();
       this.uploads.delete(options.id);
-      this.notifyListeners("events", {
-        name: "cancelled",
+      this.notifyListeners('events', {
+        name: 'cancelled',
         id: options.id,
         payload: {},
       });
@@ -39,61 +47,87 @@ export class UploaderWeb extends WebPlugin implements UploaderPlugin {
   }
 
   private async doUpload(id: string, options: uploadOption) {
-    const {
-      filePath,
-      serverUrl,
-      headers = {},
-      method = "POST",
-      parameters = {},
-    } = options;
+    const { serverUrl, headers = {}, method = 'POST', parameters = {} } = options;
     const upload = this.uploads.get(id);
 
     if (!upload) return;
 
     try {
-      const file = await this.getFileFromPath(filePath);
-      if (!file) throw new Error("File not found");
+      const files = this.normalizeFiles(options);
+      if (files.length === 0) throw new Error('Missing required parameter: filePath or files');
 
-      const formData = new FormData();
-      formData.append("file", file);
+      const resolvedMethod = method.toUpperCase();
+      const uploadType = options.uploadType ?? (resolvedMethod === 'PUT' ? 'binary' : 'multipart');
 
-      for (const [key, value] of Object.entries(parameters)) {
-        formData.append(key, value);
+      let body: BodyInit;
+      if (resolvedMethod === 'PUT' || uploadType === 'binary') {
+        if (files.length !== 1) throw new Error('Binary uploads only support a single file');
+        const file = await this.getFileFromPath(files[0].filePath);
+        if (!file) throw new Error('File not found');
+        body = file;
+      } else {
+        const formData = new FormData();
+
+        for (const fileOption of files) {
+          const file = await this.getFileFromPath(fileOption.filePath);
+          if (!file) throw new Error('File not found');
+          const fieldName = fileOption.fieldName ?? options.fileField ?? 'file';
+          formData.append(fieldName, file);
+        }
+
+        for (const [key, value] of Object.entries(parameters)) {
+          formData.append(key, value);
+        }
+
+        body = formData;
       }
 
       const response = await fetch(serverUrl, {
-        method,
+        method: resolvedMethod,
         headers,
-        body: method === "PUT" ? file : formData,
+        body,
         signal: upload.controller.signal,
       });
 
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-      this.notifyListeners("events", {
-        name: "completed",
+      this.notifyListeners('events', {
+        name: 'completed',
         id,
         payload: { statusCode: response.status },
       });
 
       this.uploads.delete(id);
     } catch (error) {
-      if ((error as Error).name === "AbortError") return;
+      if ((error as Error).name === 'AbortError') return;
 
       if (upload.retries > 0) {
         upload.retries--;
         console.log(`Retrying upload (retries left: ${upload.retries})`);
         setTimeout(() => this.doUpload(id, options), 1000);
       } else {
-        this.notifyListeners("events", {
-          name: "failed",
+        this.notifyListeners('events', {
+          name: 'failed',
           id,
           payload: { error: (error as Error).message },
         });
         this.uploads.delete(id);
       }
     }
+  }
+
+  private normalizeFiles(options: uploadOption): UploadFileOption[] {
+    if (options.files && options.files.length > 0) return options.files;
+    if (options.filePath) {
+      return [
+        {
+          filePath: options.filePath,
+          fieldName: options.fileField,
+          mimeType: options.mimeType,
+        },
+      ];
+    }
+    return [];
   }
 
   private async getFileFromPath(filePath: string): Promise<File | null> {
@@ -143,12 +177,20 @@ export class UploaderWeb extends WebPlugin implements UploaderPlugin {
       // you might need to handle different types of paths or use a file system API.
       const response = await fetch(filePath);
       const blob = await response.blob();
-      return new File([blob], filePath.split("/").pop() || "file", {
+      return new File([blob], filePath.split('/').pop() || 'file', {
         type: blob.type,
       });
     } catch (error) {
-      console.error("Error getting file from system:", error);
+      console.error('Error getting file from system:', error);
       return null;
     }
+  }
+
+  async acknowledgeEvent(_options: { eventId: string }): Promise<void> {
+    // Web uploads run in-process; events are not persisted for replay.
+  }
+
+  async getPluginVersion(): Promise<{ version: string }> {
+    return { version: 'web' };
   }
 }
