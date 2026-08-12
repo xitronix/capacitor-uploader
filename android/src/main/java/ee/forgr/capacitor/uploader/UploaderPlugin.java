@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import net.gotev.uploadservice.data.UploadInfo;
 import net.gotev.uploadservice.network.ServerResponse;
-import net.gotev.uploadservice.observer.request.RequestObserver;
+import net.gotev.uploadservice.observer.request.GlobalRequestObserver;
 import net.gotev.uploadservice.observer.request.RequestObserverDelegate;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,6 +36,7 @@ public class UploaderPlugin extends Plugin {
     private final String pluginVersion = "8.3.7";
 
     private Uploader implementation;
+    private GlobalRequestObserver uploadObserver;
 
     private static final String CHANNEL_ID = "ee.forgr.capacitor.uploader.notification_channel_id";
     private static final String CHANNEL_NAME = "Uploader Notifications";
@@ -79,7 +80,7 @@ public class UploaderPlugin extends Plugin {
                 String eventId = keys.next();
                 JSONObject eventJson = pendingEvents.getJSONObject(eventId);
                 JSObject event = JSObject.fromJSONObject(eventJson);
-                notifyListeners("events", event);
+                notifyListeners("events", event, true);
             }
         } catch (JSONException e) {
             Log.e(TAG, "Failed to replay pending upload events", e);
@@ -100,11 +101,13 @@ public class UploaderPlugin extends Plugin {
     @Override
     public void load() {
         createNotificationChannel();
+        implementation = new Uploader(getContext().getApplicationContext());
 
-        // Create a request observer for all uploads
-        RequestObserver observer = new RequestObserver(
-            getContext().getApplicationContext(),
-            getActivity(),
+        // Registered against the Application, not the Activity lifecycle: an
+        // activity-bound observer unregisters on pause, which is exactly when
+        // background uploads finish and their events need persisting.
+        uploadObserver = new GlobalRequestObserver(
+            getActivity().getApplication(),
             new RequestObserverDelegate() {
                 @Override
                 public void onProgress(Context context, UploadInfo uploadInfo) {
@@ -163,8 +166,16 @@ public class UploaderPlugin extends Plugin {
             }
         );
 
-        implementation = new Uploader(getContext().getApplicationContext());
         replayPendingEvents();
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (uploadObserver != null) {
+            uploadObserver.unregister();
+            uploadObserver = null;
+        }
+        super.handleOnDestroy();
     }
 
     public static String getMimeType(String url) {
